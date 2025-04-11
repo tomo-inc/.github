@@ -1,0 +1,7 @@
+{
+    "name": "Differential scan workflow",
+    "description": "Differential scan workflow template.",
+    "categories": [
+        "security"
+    ]
+}
