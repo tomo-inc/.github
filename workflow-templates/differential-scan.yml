@@ -1,0 +1,75 @@
+name: Differential SyntaxFlow Scan
+on:
+  pull_request:
+    branches: [ $default-branch ]
+    types: [ opened, synchronize, reopened ]
+    paths:
+      - ".github/workflows/differential-scan.yml"
+      - "src/**"
+jobs:
+ sast-scan:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: "create-main-branch"
+        run: "git branch --track ${{ github.event.repository.default_branch }} origin/${{ github.event.repository.default_branch }}"
+
+      - name: Checkout sf_rules
+        uses: actions/checkout@v3
+        with:
+          repository: tomo-inc/sf_rules
+          token: ${{ secrets.SF_RULES_PAT }}
+          path: ./sf_rules
+          fetch-depth: 0
+        
+      - name: Dependence
+        run: |
+            # apt-get update
+            # apt-get install -y jq
+            wget https://aliyun-oss.yaklang.com/yak/latest/yak_linux_amd64 -O /tmp/yak
+            chmod +x /tmp/yak
+
+      - name: Generate Prog And Check With SyntaxFlow
+        id: scan
+        run: |
+          MERGE_BASE=$(git merge-base ${{ github.event.repository.default_branch }} ${{ github.event.pull_request.head.sha }})
+          echo "Merge base is: $MERGE_BASE"
+          /tmp/yak sync-rule
+          /tmp/yak gitefs --start $MERGE_BASE --end ${{ github.event.pull_request.head.sha }} --output ./fs.zip
+          /tmp/yak ssa -t ./fs.zip --program diffcode -l java > log.txt 2>&1 || exit 1; 
+          grep -F "Current goroutine call stack:" log.txt && exit 2;
+          echo "SyntaxFlow Scanning..."
+          /tmp/yak sf --program diffcode ./sf_rules --save;
+          echo "Export risk.json..."
+          /tmp/yak ssa-risk --program diffcode --json --output risk.json 
+          echo "Check risk.json..."
+          if cat risk.json | jq '.[] | .severity' | grep -E "(middle|high|critical)"; then
+            echo "Lark webhook..."
+            jq . risk.json > risk.json.temp && rm risk.json && mv risk.json.temp risk.json
+            /tmp/yak ./sf_rules/webhook.yak  --repo ${{ github.repository }} --url ${{ secrets.LARK_VULN_WEBHOOK_URL }} --action-url ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} --file risk.json --type vuln
+            echo "exitReason=vuln" >> $GITHUB_OUTPUT
+            exit 3
+            fi
+      - name: Webhook when scan fail
+        if: failure()
+        run: |
+          if [ "${{ steps.scan.outputs.exitReason }}" != "vuln" ]; then
+            /tmp/yak ./sf_rules/webhook.yak  --repo ${{ github.repository }} --url ${{ secrets.LARK_VULN_WEBHOOK_URL }} --action-url ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} --type fail
+          fi
+      - name: Upload fail log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log.txt
+          path: log.txt
+
+      - name: Upload risk log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: risk.json
+          path: risk.json
