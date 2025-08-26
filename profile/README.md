@@ -22,4 +22,4 @@ We believe in making blockchain technology accessible, intuitive, and useful for
 
 👉 **Learn more at [Tomo Inc.](https://tomo.inc/)**  
 
-<img width="100%" alt="TOMO LOGO" src="https://github.com/user-attachments/assets/8bf49259-74ee-457c-8e11-72b9508e7bf2" />
+<img width="100%" alt="TOMO LOGO" src="https://github.com/tomo-inc/.github/blob/main/profile/NEW_TOMO_ICON.png" />
